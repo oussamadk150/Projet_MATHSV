@@ -1,0 +1,365 @@
+---
+title: "SBIFM"
+author: "Romain Lacoste"
+date: "02/02/2022"
+output: 
+  html_document:
+    theme: journal
+    toc: yes
+    toc_float: yes
+    code_folding: "hide"
+    encoding: "UTF-8"
+    df_print: "paged"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE,
+                      warning = FALSE)
+```
+
+```{r librariries}
+library(tidyverse) # Pour la manipulation de données
+library(dplyr)
+library(MASS)      # Pour mvrnorm
+library(ggplot2)   # Pour tracer la distribution des paramètres
+```
+
+# Contexte 
+
+Dans l'article "Sparse Bayesian infinite factor models", le modèle suivant est introduit :
+$$Y_{i} = \Lambda\eta_{i} + \epsilon_{i}\ \ \forall i \in \{1,...,n\}$$
+Ou $n$ est le nombre d'oberservations et avec $\forall i \in \{1,...,n\}$:
+$$\left\{
+\begin{array}{ll}
+      \epsilon_{i} \sim \mathcal{N}_p(O,\Sigma)  \\            
+      \eta_i \sim \mathcal{N}_k(O,I_k) \\ 
+   \end{array}
+\right.$$
+
+**Rappel :** le modèle linéaire classique s'écrit comme suit :
+$$Y = X\beta + E$$
+Ainsi le modèle de l'ACP probabiliste diffère fondamentalement du modèle linéaire de part le fait que $\eta$ est non observé. 
+
+**Notation:** On appelle $\Lambda$ la matrice des poids et les vecteurs $\eta_i$ les facteurs.
+
+**Observation:** $\{y_{i}\}_{i \in [1,n]}$
+
+**Inconnues:** $\{\eta_{i}\}_{i \in [1,n]} \\ \Sigma \\ \Lambda$
+
+**Objectif:** On veut retrouver $Y$ à partir de ces trois quantités.
+
+# Simulation de Y
+
+On prend $n=1000$; $p=10$; $k=2$
+
+**Etape 1:** Simuler les $\epsilon_i$ en choisissant $\Sigma$
+
+**Etape 2:** Fixer $\Lambda$
+
+**Etape 3:** Simuler les $\eta_i$
+
+**Etape 4:** Agréger le tout pour obtenir $Y$
+
+```{r simulation de Y}
+# On fixe les dimensions 
+n = 1000
+p = 10
+k = 2
+
+# Pour avoir les mêmes données
+
+set.seed(123)
+
+# On choisit sigma
+sigma = diag(10**-2, p)
+# On simule les epsilon
+epsilon = t(mvrnorm(n, rep(0,p), sigma))
+
+#On fixe lambda
+lambda = matrix(sample(-1:1, 
+                       size = p*k, 
+                       replace = T),
+                nrow = p, ncol = k)
+
+#On simule les eta
+eta = t(mvrnorm(n, rep(0,k), diag(1,k)))
+
+#On agrège pour obtenir Y
+Y = t(lambda %*% eta + epsilon)
+```
+
+# Lecture de l'article 
+
+## Modèle facteur bayésien
+
+Dans l'article de BHATTACHARYA, le modèle suivant est introduit :
+$$Y_{(p,1)} = \Lambda_{(p,k)}X_{(k,1)} + \epsilon_{(p,1)}$$
+avec  $$\left\{
+      \forall i\in \{1,...,n\},
+      \begin{array}{ll}
+              \eta_{i} \sim \mathcal{N}_{k}(0,\,I_{k})\\
+             \epsilon_{i} \sim \mathcal{N}_{p}(0,\,\Sigma) 
+      \end{array}
+      \right.$$ 
+      
+avec $$\Sigma = \begin{pmatrix}
+\sigma_1^2 & \dots & 0\\
+\vdots  & \ddots & \vdots\\ 
+0 & \dots & \sigma_p^2
+\end{pmatrix}$$
+
+Donc $$Y_i|(\lambda_{j,h}\sigma_j^2)_{j,h} \sim \mathcal{N}_{p}(0,\,\Lambda I_k\Lambda^T)*\mathcal{N}_{p}(0,\,\Sigma)$$
+
+i.e. $$Y_i|(\lambda_{jh}\sigma_j^2)_{j,h} \sim \mathcal{N}_{p}(0,\Omega) \\  \Omega = \Lambda \Lambda^T + \Sigma$$
+
+La matrice $\Lambda$ est appelée la matrice des loadings
+
+## Lois a priori
+
+L'article propose un choix de loi a priori.
+On écrit d'abord les priors définit dans l'article.
+
+### Définition des priors
+On a :
+$$\forall i \in \{1,...,p\} , \ \sigma_j^2|(a_{\sigma},b_{\sigma}) \sim \Gamma^{-1}(a_{\sigma},b_{\sigma}) \\ 
+\\
+      \forall j\in \{1,...,p\}, \
+      \forall h\in \{1,...,k\}, \
+      \lambda_{jh} \sim \mathcal{N}_{k}(0,\,\phi_{jh}^{-1}\tau_{h}^{-1})$$
+
+avec $\phi_{jh} \sim \Gamma(\frac{\nu}{2},\frac{\nu}{2})$
+et $\tau_{h} = \prod_{l=1}^h \delta_l \\ \delta_1 \sim \Gamma(a_1,1) \\ \delta_l \sim \Gamma(a_2,1) \ \forall l \geq 2$
+
+### Réflexion autour du choix des priors
+
+On peut à présent discuter du choix de tels priors.
+
+Le prior $\tau_h$ est un paramètre de "shrinkage" global (effet régularisant).
+Puisque les $(\delta_l)_{l=1,...,h}$ sont indépendants, on a :
+$$\mathbb{E}[\tau_h] = \prod_{l=1}^h\mathbb{E}[\delta_l]=a_1a_2^{h-1}$$
+
+Ainsi, en moyenne, plus $h$ est grand plus $\tau_h$ est grand (car $a_2>1$).
+Donc en moyenne, plus $h$ est grand plus $\tau_h^{-1}$ est petit.
+
+Ainsi, puisque $\lambda_{jh} \sim \mathcal{N}_{k}(0,\,\phi_{jh}^{-1}\tau_{h}^{-1})$, on remarque que la variance de $\lambda_{jh}$ tend vers 0.
+
+Ainsi quand $h$ grandit on augmente la précision et la loi de $\lambda_{jh}$ tend vers une mesure de Dirac en 0 $\delta_0$.
+
+Une autre manière de voir cela est de remarquer que l'on donne ainsi moins de poids au dernière variables, puisque les éléments des colonnes les plus à droite sont nuls.
+
+### Liens avec contexte biologique
+
+On a une matrice rempli d'éléments $Y_{(ij)}$ qui correspondent à la densité de l'espèce $j$ au site $i$.
+Mais on n'a pas de variables explicative observé.
+
+Cependant observe que quand $Y_{(ij)}$ est élevé, $Y_{(ij')}$ a tendance a être élevé aussi, i.e. que l'espèce $j$ a tendance a être présente avec l'espèce $j'$.
+
+Donc on veut dire qu'elles ont une réponse commune à $k$ variables non-mesurées (ex : type de sol etc ...).
+
+On veut $k$ le plus petit possible car plus facile à interpréter.
+A l'instar de l'ACP classique, c'est une réduction de dimension.
+
+On fixe donc le nombre de colonne $k$, mais avec le choix des priors de l'article, on dit aussi qu'elles ont de moins en moins d'importance lorsque $h$ grandit.
+
+On choisit 
+
+## Autre notation du modèle
+
+L'article propose une réecriture du modèle, une autre façon de voir le modèle.
+Conceptuellement, cette vision correspond à prendre la transposé de l'écriture précédente.
+
+On note $\lambda_j^T$ la j-ème ligne de $\Lambda$
+Le modèle peut s'écrire sous la forme :
+$$y^{(j)} = \eta \lambda_j^T + \epsilon_j$$
+avec $$\left\{
+      \begin{array}{ll}
+             y^{(j)} = (y_{1j},...,y_{nj})^T\\
+             \eta = (\eta_1^T,...,\eta_n^T)^T\\
+             \epsilon_j = (\epsilon_j^1,...,\epsilon_j^n)^T
+      \end{array}
+      \right.$$
+
+et tel que $$\forall i \in \{1,...,n\}, \ \epsilon_j^i \sim \mathcal{N}(0,\sigma_j^2)$$
+
+On se retrouve donc avec deux visions du même problème.
+On pourra donc choisir l'une ou l'autre en fonction des paramètres dont on veut calculer la loi posterieure, ce qui faciletera les calculs. 
+En effet l'une est plus adapté au calcul de certains paramètre comme on le verra par la suite.
+
+## Lois a posteriori
+
+Dans cette section on écrit les lois a postériori des différents paramètres, qui seront ensuite utilisés dans l'implémentation de l'algorithme de Gibbs.
+
+
+# Algorithme de Gibbs
+
+Dans cette section, on va implémenter l'algorithme de Gibbs présentée dans l'article.
+On choisit comme données le jeu de donnée qu'on a simulé précédemment.
+
+## Définition des paramètres des priors
+
+```{r prior}
+#Choix projet
+a_1=2
+a_2=1
+#Choix de l'article
+nu = 3
+a_sigma = 1
+b_sigma = 0.3
+
+#On simule phi
+phi = matrix(rgamma(p*k,nu/2,nu/2),p,k)
+
+#On simule tau
+delta_1 = rgamma(1,a_1,1)
+delta_l = rgamma(k-1,a_2,1)
+delta = c(delta_1,delta_l)
+
+tau = rep(0,k)
+for (h in 1:k) {
+  tau[h] = prod(delta[1:h])
+}
+
+#On simule sigma_2
+sigma_2 = 1/(rgamma(p,a_sigma,b_sigma))
+
+#On simule lambda
+lambda = matrix(0,p,k)
+for (j in 1:p) {
+  Dj = diag(phi[j,]*tau)
+  lambda[j,] = mvrnorm(1,rep(0,k),solve(Dj))
+}
+```
+## Définition des paramètres des posteriors
+
+```{r step_1}
+step1 <- function(Y,eta,sigma_2,phi,tau){
+  lambda_post = matrix(0,p,k)
+  for (j in 1:p) {
+    Dj = diag(phi[j,]*tau)
+    var_post = solve(solve(Dj) + t(eta) %*% eta / sigma_2[j])
+    moy_post = var_post %*% t(eta) %*% Y[,j] / sigma_2[j]
+    lambda_post[j,] = mvrnorm(1, moy_post, var_post)
+  }
+  return(lambda_post)
+}
+print(step1(Y,t(eta),sigma_2,phi,tau))
+```
+
+```{r step_2}
+step2 <- function(Y,eta,lambda){
+  sigma_2_post = rep(0,p)
+  a_post = a_sigma + n/2
+  for (j in 1:p) {
+    b_post = b_sigma + 0.5*sum((Y[,j]-t(lambda[j,])%*%eta)**2)
+    sigma_2_post[j] = 1/(rgamma(1,a_post,b_post))
+  }
+  return(sigma_2_post)
+}
+print(step2(Y,eta,lambda))
+```
+
+```{r step_3}
+step3 <- function(Y,lambda,sigma){
+  eta_post = matrix(0,n,k)
+  for (i in 1:n) {
+        var_post = solve(diag(1,k) + 
+                           t(lambda)%*%solve(sigma)%*%lambda)
+    moy_post = var_post %*% solve(sigma)%*%Y[i,]
+    eta_post[i,] = mvrnorm(1,moy_post,var_post)
+  }
+  return(t(eta_post))
+}
+print(step3(Y,lambda,sigma))
+```
+
+```{r step_4}
+step4 <- function(lambda,tau){
+  phi_post = matrix(0,p,k)
+  for (j in 1:p) {
+    phi_post[j,] = rgamma(1,(nu+1)/2, (nu+tau*(lambda[j,])**2)/2)
+  }
+  return(phi_post)
+}
+print(step4(lambda,tau))
+```
+
+```{r step 5}
+step5 <- function(lambda,phi, deltas){
+  delta_post = deltas # Initialisation à NA
+  phi_lambda2 <- phi * lambda^2
+  # cumprod donne le produit cumulé
+  tau_m1 <- cumprod(deltas_post) / deltas[1] # Vecteur t^{(1)} de l'article
+  omega <- colSums(phi_lambda2) # Vecteur des sommes de colonnes
+  delta_post[1] = rgamma(1, a_1 +p*k/2,
+                1 + 0.5 * sum(tau_m1 * omega))
+  for (h in 2:k){
+    tau_mh <- (cumprod(deltas_post) / deltas[h])[-(1:(h-1))]
+    delta_post[h] = rgamma(1, a_2 + p/2 * (k-h+1),
+                1 + 0.5 * sum(tau_mh * omega[-(1:(h - 1))]))
+  }
+  # WARNING!!!
+  # Avant on renvoyait les taus, attention dans la boucle du Gibbs
+  return(delta_post)
+}
+print(step5(lambda,phi,tau))
+```
+
+## Fonction Gibbs
+
+### Initialisation de l'algorihtme de Gibbs
+```{r Initialisation}
+n_iterations=1000
+output=matrix(NA,nrow=n_iterations,ncol=6)
+output[1,] = c(1,lambda[1,2],sigma_2[2],eta[1,200],phi[1,2],tau[2])
+
+```
+
+### Itération i
+
+```{r}
+sigma_2_k = sigma_2
+eta_k = eta
+tau_k = tau
+phi_k = phi
+lambda_k = lambda
+for (i in 2:n_iterations){
+  lambda_k = step1(Y,t(eta_k),sigma_2_k,phi_k,tau_k)
+  sigma_2_k = step2(Y,eta_k,lambda_k)
+  eta_k = step3(Y,lambda_k,sigma)
+  phi_k = step4(lambda_k,tau_k)
+  output[i,] = c(i,mean(lambda_k),mean(sigma_2_k),mean(eta_k),mean(phi_k),mean(tau_k))
+}
+output <- as.data.frame(output)
+colnames(output) <- c("iterations","lambda","sigma_2","eta","phi","tau")
+view(output)
+
+```
+
+#### Représentation de la distribution a posteriori marginale des paramètres
+
+```{r plot}
+ggplot(output, aes(iterations)) + 
+  geom_line(aes(y = lambda, colour = "lambda")) + 
+  geom_line(aes(y = sigma_2, colour = "sigma_2")) +
+  geom_line(aes(y = eta, colour = "eta")) +
+  geom_line(aes(y = phi, colour = "phi")) 
+```
+
+#### Histogramme du nombre de passage
+
+```{r histogramme}
+ggplot(output) + 
+  geom_histogram(aes(lambda, colour = "lambda"), fill="white",binwidth=0.01)
+
+ggplot(output) + 
+  geom_histogram(aes(sigma_2, colour = "sigma_2"), fill="white",binwidth=0.01)
+
+ggplot(output) + 
+  geom_histogram(aes(eta, colour = "eta"), fill="white",binwidth=0.01) 
+
+ggplot(output) + 
+  geom_histogram(aes(phi, colour = "phi"), fill="white",binwidth=0.01) 
+```
+
+
+
