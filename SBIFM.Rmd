@@ -229,7 +229,7 @@ for (j in 1:p) {
   lambda[j,] = mvrnorm(1,rep(0,k),solve(Dj))
 }
 ```
-## Définition des paramètres des posteriors
+## Définition des paramètres de posteriors
 
 ```{r step_1}
 step1 <- function(Y,eta,sigma_2,phi,tau){
