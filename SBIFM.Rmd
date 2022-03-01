@@ -266,8 +266,8 @@ step3 <- function(Y,lambda,sigma){
   for (i in 1:n) {
         var_post = solve(diag(1,k) + 
                            t(lambda)%*%solve(sigma)%*%lambda)
-    moy_post = var_post %*% solve(sigma)%*%Y[i,]
-    eta_post[i,] = mvrnorm(1,moy_post,var_post)
+moy_post = var_post %*% t(lambda) %*%solve(sigma)%*%Y[i,]
+eta_post[i,] = mvrnorm(1,moy_post,var_post)
   }
   return(t(eta_post))
 }
