@@ -16,7 +16,9 @@ output:
 knitr::opts_chunk$set(echo = TRUE, message = FALSE,
                       warning = FALSE)
 ```
-
+```{r}
+rm(list = ls()) #Nettoyage de l'environnement
+```
 ```{r librariries}
 library(tidyverse) # Pour la manipulation de données
 library(dplyr)
