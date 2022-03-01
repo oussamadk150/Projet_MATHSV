@@ -284,16 +284,16 @@ print(step4(lambda,tau))
 ```
 
 ```{r step 5}
-step5 <- function(lambda,phi, deltas){
-  delta_post = deltas # Initialisation à NA
+step5 <- function(lambda,phi, delta){
+  delta_post = delta # Initialisation à NA
   phi_lambda2 <- phi * lambda^2
   # cumprod donne le produit cumulé
-  tau_m1 <- cumprod(deltas_post) / deltas[1] # Vecteur t^{(1)} de l'article
+  tau_m1 <- cumprod(delta_post) / delta[1] # Vecteur t^{(1)} de l'article
   omega <- colSums(phi_lambda2) # Vecteur des sommes de colonnes
   delta_post[1] = rgamma(1, a_1 +p*k/2,
                 1 + 0.5 * sum(tau_m1 * omega))
   for (h in 2:k){
-    tau_mh <- (cumprod(deltas_post) / deltas[h])[-(1:(h-1))]
+    tau_mh <- (cumprod(delta_post) / delta[h])[-(1:(h-1))]
     delta_post[h] = rgamma(1, a_2 + p/2 * (k-h+1),
                 1 + 0.5 * sum(tau_mh * omega[-(1:(h - 1))]))
   }
@@ -301,38 +301,60 @@ step5 <- function(lambda,phi, deltas){
   # Avant on renvoyait les taus, attention dans la boucle du Gibbs
   return(delta_post)
 }
-print(step5(lambda,phi,tau))
+print(step5(lambda,phi,delta))
 ```
 
 ## Fonction Gibbs
 
 ### Initialisation de l'algorihtme de Gibbs
 ```{r Initialisation}
-n_iterations=1000
-output=matrix(NA,nrow=n_iterations,ncol=6)
-output[1,] = c(1,lambda[1,2],sigma_2[2],eta[1,200],phi[1,2],tau[2])
+# Output
+lambda_output = array(dim = c(p,k,n_iterations))
+sigma_2_output = array(dim = c(p,n_iterations))
+eta_output = array(dim = c(n,k,n_iterations))
+phi_output = array(dim = c(p,k,n_iterations))
+tau_output = array(dim = c(k,n_iterations))
 
+#Initialisation
+lambda_output[,,1] = lambda
+view(lambda_output)
+sigma_2_output[,1] = sigma_2
+eta_output[,,1] = eta
+phi_output[,,1] = phi
+tau_output[,1] = tau
 ```
 
 ### Itération i
 
 ```{r}
-sigma_2_k = sigma_2
-eta_k = eta
-tau_k = tau
-phi_k = phi
-lambda_k = lambda
+sigma_2_i = sigma_2
+eta_i = eta
+tau_i = tau
+delta_i = delta
+phi_i = phi
+lambda_i = lambda
 for (i in 2:n_iterations){
-  lambda_k = step1(Y,t(eta_k),sigma_2_k,phi_k,tau_k)
-  sigma_2_k = step2(Y,eta_k,lambda_k)
-  eta_k = step3(Y,lambda_k,sigma)
-  phi_k = step4(lambda_k,tau_k)
-  output[i,] = c(i,mean(lambda_k),mean(sigma_2_k),mean(eta_k),mean(phi_k),mean(tau_k))
+  lambda_i = step1(Y,t(eta_i),sigma_2_i,phi_i,tau_i)
+  sigma_2_i = step2(Y,eta_i,lambda_i)
+  eta_i = step3(Y,lambda_i,sigma)
+  phi_i = step4(lambda_i,tau_i)
+  delta_i = step5(lambda_i,phi_i,delta_i)
+  for (h in 1:k) {
+  tau_k[h] = prod(delta_i[1:h])
+  }
+  lambda_output[,,i] = lambda_i
+sigma_2_output[,i] = sigma_2_i
+eta_output[,,i] = eta_i
+phi_output[,,i] = phi_i
+tau_output[,i] = tau_i
 }
-output <- as.data.frame(output)
-colnames(output) <- c("iterations","lambda","sigma_2","eta","phi","tau")
-view(output)
+lambda_output <- as.data.frame(lambda_output)
+sigma_2_output <- as.data.frame(sigma_2_output)
+eta_output <- as.data.frame(eta_output)
+phi_output <- as.data.frame(phi_output)
+tau_output <- as.data.frame(tau_output)
 
+view(colSums(lambda_output))
 ```
 
 #### Représentation de la distribution a posteriori marginale des paramètres
