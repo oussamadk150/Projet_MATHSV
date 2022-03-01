@@ -313,7 +313,7 @@ print(step5(lambda,phi,delta))
 # Output
 lambda_output = array(dim = c(p,k,n_iterations))
 sigma_2_output = array(dim = c(p,n_iterations))
-eta_output = array(dim = c(n,k,n_iterations))
+eta_output = array(dim = c(k,n,n_iterations))
 phi_output = array(dim = c(p,k,n_iterations))
 tau_output = array(dim = c(k,n_iterations))
 
@@ -350,40 +350,124 @@ eta_output[,,i] = eta_i
 phi_output[,,i] = phi_i
 tau_output[,i] = tau_i
 }
-lambda_output <- as.data.frame(lambda_output)
-sigma_2_output <- as.data.frame(sigma_2_output)
-eta_output <- as.data.frame(eta_output)
-phi_output <- as.data.frame(phi_output)
-tau_output <- as.data.frame(tau_output)
-
-view(colSums(lambda_output))
 ```
 
-#### Représentation de la distribution a posteriori marginale des paramètres
+#### Représentation de la distribution a posteriori marginale des paramètres et des trajectoires des chaînes
 
-```{r plot}
-ggplot(output, aes(iterations)) + 
-  geom_line(aes(y = lambda, colour = "lambda")) + 
-  geom_line(aes(y = sigma_2, colour = "sigma_2")) +
-  geom_line(aes(y = eta, colour = "eta")) +
-  geom_line(aes(y = phi, colour = "phi")) 
+##### Lambda
+```{r plot lambda}
+# On calcule la moyenne a posteriori
+apply(lambda_output, 
+      MARGIN = c(1, 2), 
+      mean) 
+
+lambda_df <- format_array(array_ = lambda_output, 
+                            param_name = "Lambda") 
+lambda_df  
+# On affiche la chaine
+ggplot(lambda_df) + 
+  aes(x = iteration, y = Estimate) + 
+  facet_wrap(~Parameter, 
+             labeller = label_parsed,  
+             nrow = 10) + 
+  geom_line() 
+
+# On affiche les densités
+ggplot(lambda_df) + 
+  aes(x = Estimate) + 
+  facet_wrap(~Parameter, 
+             labeller = label_parsed, 
+             scales = "free_y", 
+             nrow = 10) + 
+  geom_density() 
+```
+##### sigma_2
+```{r plot sigma_2}
+# On calcule la moyenne a posteriori
+mean_sigma_2 <- rowMeans(sigma_2_output)
+mean_sigma_2
+
+# Plots
+
+# Premièrement, on formate en data.frame (df)
+sigma_2_df <- format_matrix(matrix_ = sigma_2_output, 
+                            param_name = "sigma", 
+                            suffix_ = "^2") 
+view(sigma_2_df)
+
+# On affiche la chaine
+ggplot(sigma_2_df) + 
+  aes(x = iteration, y = Estimate) + 
+  facet_wrap(~Parameter, 
+             labeller = label_parsed, 
+             nrow = 2) + 
+  geom_line() 
+
+# On affiche les densités
+ggplot(sigma_2_df) + 
+  aes(x = Estimate) + 
+  facet_wrap(~Parameter, 
+             labeller = label_parsed,  
+             scales = "free_y", 
+             nrow = 2) + 
+  geom_density() 
 ```
 
-#### Histogramme du nombre de passage
+##### Phi
+```{r plot phi}
+# On calcule la moyenne a posteriori
+apply(phi_output, 
+      MARGIN = c(1, 2), 
+      mean) 
 
-```{r histogramme}
-ggplot(output) + 
-  geom_histogram(aes(lambda, colour = "lambda"), fill="white",binwidth=0.01)
+eta_df <- format_array(array_ = phi_output, 
+                            param_name = "phi") 
+eta_df  
+# On affiche la chaine
+ggplot(eta_df) + 
+  aes(x = iteration, y = Estimate) + 
+  facet_wrap(~Parameter, 
+             labeller = label_parsed,  
+             nrow = 10) + 
+  geom_line() 
 
-ggplot(output) + 
-  geom_histogram(aes(sigma_2, colour = "sigma_2"), fill="white",binwidth=0.01)
-
-ggplot(output) + 
-  geom_histogram(aes(eta, colour = "eta"), fill="white",binwidth=0.01) 
-
-ggplot(output) + 
-  geom_histogram(aes(phi, colour = "phi"), fill="white",binwidth=0.01) 
+# On affiche les densités
+ggplot(eta_df) + 
+  aes(x = Estimate) + 
+  facet_wrap(~Parameter, 
+             labeller = label_parsed, 
+             scales = "free_y", 
+             nrow = 10) + 
+  geom_density() 
 ```
+##### Tau
+```{r plot tau}
+# On calcule la moyenne a posteriori
+mean_tau <- rowMeans(tau_output)
+mean_tau
 
+# Plots
 
+# Premièrement, on formate en data.frame (df)
+tau_df <- format_matrix(matrix_ = tau_output, 
+                            param_name = "tau", 
+                            suffix_ = "^2") 
+view(tau_df)
 
+# On affiche la chaine
+ggplot(tau_df) + 
+  aes(x = iteration, y = Estimate) + 
+  facet_wrap(~Parameter, 
+             labeller = label_parsed, 
+             nrow = 2) + 
+  geom_line() 
+
+# On affiche les densités
+ggplot(tau_df) + 
+  aes(x = Estimate) + 
+  facet_wrap(~Parameter, 
+             labeller = label_parsed,  
+             scales = "free_y", 
+             nrow = 2) + 
+  geom_density() 
+```
