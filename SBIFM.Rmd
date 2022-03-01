@@ -215,11 +215,11 @@ phi = matrix(rgamma(p*k,nu/2,nu/2),p,k)
 delta_1 = rgamma(1,a_1,1)
 delta_l = rgamma(k-1,a_2,1)
 delta = c(delta_1,delta_l)
-
-tau = rep(0,k)
-for (h in 1:k) {
-  tau[h] = prod(delta[1:h])
-}
+    tau<-cumprod(delta)
+#tau = rep(0,k)
+#for (h in 1:k) {
+ #tau[h] = prod(delta[1:h])
+#}
 
 #On simule sigma_2
 sigma_2 = 1/(rgamma(p,a_sigma,b_sigma))
