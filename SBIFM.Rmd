@@ -342,7 +342,7 @@ for (i in 2:n_iterations){
   phi_i = step4(lambda_i,tau_i)
   delta_i = step5(lambda_i,phi_i,delta_i)
   for (h in 1:k) {
-  tau_k[h] = prod(delta_i[1:h])
+  tau_i[h] = prod(delta_i[1:h])
   }
   lambda_output[,,i] = lambda_i
 sigma_2_output[,i] = sigma_2_i
