@@ -5,54 +5,28 @@ rm(list = ls()) #Nettoyage de l'environnement
 
 ## ----librariries-----------------------------------------------------
 library(tidyverse) # Pour la manipulation de données
-library(dplyr)
 library(MASS)      # Pour mvrnorm
-library(ggplot2)   # Pour tracer la distribution des paramètres
+library(mixtools) # Pour dmvnorm (densite d'une loi normale multivariee)
 source("utils_formatting_functions.R")
+source("utils_generation_donnees_simulees.R")
 
 
-## ----simulation de Y-------------------------------------------------
-# On fixe les dimensions 
-n = 1000
-p = 10
-n_iterations = 100
+evaluation_k <- function(Y, K){
+  n <- nrow(Y)
+  p <- ncol(Y)
+  BIC = matrix(NA, nrow = K, ncol = 2)
 
-evaluation_k <- function(K){
-  BIC = matrix(NA, nrow = 10, ncol = 2)
+  ## ----hyperparamètres-----------------------------------------------------------
+  n_iterations = 100
+  
+  #Choix projet
+  a_1=2
+  a_2=3
+  #Choix de l'article
+  nu = 3
+  a_sigma = 1
+  b_sigma = 0.3
   for (k in 2:(K)){
-    
-    # Pour avoir les mêmes données
-    set.seed(123)
-    
-    # On choisit sigma
-    sigma = diag(10**-2, p)
-    # On simule les epsilon
-    epsilon = t(mvrnorm(n, rep(0,p), sigma))
-    
-    #On fixe lambda
-    lambda = matrix(sample(-1:1, 
-                           size = p*k, 
-                           replace = T),
-                    nrow = p, ncol = k)
-    
-    #On simule les eta
-    eta = mvrnorm(n, rep(0,k), diag(1,k))
-    
-    #On agrège pour obtenir Y
-    Y = t(lambda %*% t(eta) + epsilon)
-    
-    
-    ## ----hyperparamètres-----------------------------------------------------------
-    #Choix projet
-    a_1=2
-    a_2=3
-    #Choix de l'article
-    nu = 3
-    a_sigma = 1
-    b_sigma = 0.3
-    
-    
-    
     ## ----step_1----------------------------------------------------------
     # mise à jour de lambda
     step1 <- function(Y,eta,sigma_2,phi,tau){
@@ -165,14 +139,18 @@ evaluation_k <- function(K){
                                   MARGIN = c(1, 2), 
                                   mean)) + diag(rowMeans(sigma_2_output))
     
-    L = -n/2*(p*log(2*3.14) + determinant(omega, logarithm = TRUE)$modulus + sum(diag(solve(omega)%*%cov(Y))))
-    BIC[k,] = c(k,L - (k/2)*log(n))
+    L = sum(apply(Y,1,function(y){
+      mixtools::logdmvnorm(y,rep(0,p),omega)
+    }))
+    BIC[k,] = c(k,L - ((k*p + p)/2)*log(n))
   }
-  as.data.frame(BIC)
   colnames(BIC) <- c("iterations","BIC")
-  ggplot(as.data.frame(BIC), aes(iterations)) + 
-    geom_point(aes(y = BIC, colour = "BIC")) +
-    ggtitle("Valeur du BIC en fonction de k") +
-    xlab("valeur de k") + ylab("valeur BIC")
+  as.data.frame(BIC)
 }
-evaluation_k(10)
+valeurs_BIC <- evaluation_k(Y, 10)
+
+
+ggplot(valeurs_BIC, aes(x = iterations)) + 
+  geom_point(aes(y = BIC, colour = "BIC")) +
+  labs(x = "Valeur de k", y = "Valeur BIC", title = "Valeur du BIC en fonction de k",
+       colour = "Mon nom")

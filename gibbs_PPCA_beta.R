@@ -4,45 +4,19 @@
 rm(list = ls()) #Nettoyage de l'environnement
 
 ## ----librariries-----------------------------------------------------
-library(tidyverse) # Pour la manipulation de données
+library(tidyverse) # Pour la manipulation de donn?es
 library(dplyr)
 library(MASS)      # Pour mvrnorm
-library(ggplot2)   # Pour tracer la distribution des paramètres
-source("C:/Users/TESS/Nathalie/Projet_borneo/Gibbs_PPCA/utils_formatting_functions.R")
-
+library(ggplot2)   # Pour tracer la distribution des param?tres
+source("utils_formatting_functions.R")
+source("utils_generation_donnees_simulees.R")
 ## ----simulation de Y-------------------------------------------------
 # On fixe les dimensions 
-n = 1000
-p = 10
 k = 2
-n_iterations = 100
+q <- ncol(X)
+n_iterations = 1000
 
-# Pour avoir les mêmes données
-
-set.seed(123)
-
-# On choisit sigma
-sigma = diag(10**-2, p)
-# On simule les epsilon
-epsilon = t(mvrnorm(n, rep(0,p), sigma))
-
-#On fixe lambda
-lambda = matrix(sample(-1:1, 
-                       size = p*k, 
-                       replace = T),
-                nrow = p, ncol = k)
-
-#On simule les eta
-eta = mvrnorm(n, rep(0,k), diag(1,k))
-
-#On agrège pour obtenir Y
-Y = t(lambda %*% t(eta) + epsilon)
-
-## ----simulation de X et beta-------------------------------------------------
-X = mvrnorm(n, rep(0,k), diag(1,k))
-
-beta = mvrnorm(k, rep(0,p), diag(1,p))
-## ----hyperparamètres-----------------------------------------------------------
+## ----hyperparam?tres-----------------------------------------------------------
 #Choix projet
 a_1=2
 a_2=3
@@ -51,10 +25,12 @@ nu = 3
 a_sigma = 1
 b_sigma = 0.3
 
+sigma_2_beta = 1
+
 
 
 ## ----step_1----------------------------------------------------------
-# mise à jour de lambda
+# mise ? jour de lambda
 step1 <- function(Y,eta,sigma_2,phi,tau){
   lambda_post = matrix(0,p,k)
   for (j in 1:p) {
@@ -68,7 +44,7 @@ step1 <- function(Y,eta,sigma_2,phi,tau){
 
 
 ## ----step_2----------------------------------------------------------
-# mise à jour de sigma_2
+# mise ? jour de sigma_2
 step2 <- function(Y,eta,lambda){
   sigma_2_post = rep(0,p)
   a_post = a_sigma + n/2
@@ -81,7 +57,7 @@ step2 <- function(Y,eta,lambda){
 
 
 ## ----step_3----------------------------------------------------------
-# mise à jour de eta
+# mise ? jour de eta
 step3 <- function(Y,lambda,sigma_2){
   sigma = diag(sigma_2)
   eta_post = matrix(0,n,k)
@@ -96,7 +72,7 @@ step3 <- function(Y,lambda,sigma_2){
 
 
 ## ----step_4----------------------------------------------------------
-# mise à jour de eta
+# mise ? jour de eta
 step4 <- function(lambda,tau){
   phi_post = matrix(0,p,k)
   for (j in 1:p) {
@@ -107,11 +83,11 @@ step4 <- function(lambda,tau){
 
 
 ## ----step 5----------------------------------------------------------
-# mise à jour de delta
+# mise ? jour de delta
 step5 <- function(lambda,phi, delta){
-  delta_post = delta # Initialisation à NA
+  delta_post = delta # Initialisation ? NA
   phi_lambda2 <- phi * lambda^2
-  # cumprod donne le produit cumulé
+  # cumprod donne le produit cumul?
   tau_m1 <- cumprod(delta_post) / delta[1] # Vecteur t^{(1)} de l'article
   omega <- colSums(phi_lambda2) # Vecteur des sommes de colonnes
   delta_post[1] = rgamma(1, a_1 +p*k/2,
@@ -124,36 +100,48 @@ step5 <- function(lambda,phi, delta){
   return(delta_post)
 }
 ## ----step 6----------------------------------------------------------
-# mise à jour de beta
-step6 <- function(Y,lambda,eta){
-  #On fait une regression
-  model = lm(formula = Y-eta%*%t(lambda) ~ X )
-  return (model$coefficients[2:3,])
+# mise ? jour de beta
+step6 <- function(Y,X,lambda,eta, sigma_2){
+  p <- ncol(Y)
+  q <- ncol(X)
+  beta_post = matrix(0, nrow = p, ncol = q)
+  precision_prior_beta <- diag(1 / sigma_2_beta, nrow = q)
+  for (j in 1:p) {
+    var_post = solve(precision_prior_beta + t(X) %*% X / sigma_2[j])
+    moy_post = var_post %*% t(X) %*% (Y[,j] - eta %*% lambda[j,]) / sigma_2[j]
+    beta_post[j,] = mvrnorm(1, moy_post, var_post)
+  }
+  return(t(beta_post))
 }
 
 
 ## ----Initialisation--------------------------------------------------
 # Output
-lambda_output = array(dim = c(p,k,n_iterations))
+
+lambda_output = array(dim = c(p, k, n_iterations))
 sigma_2_output = array(dim = c(p,n_iterations))
 eta_output = array(dim = c(n,k,n_iterations))
 phi_output = array(dim = c(p,k,n_iterations))
 tau_output = array(dim = c(k,n_iterations))
-beta_output = array(dim = c(k,p,n_iterations))
+beta_output = array(dim = c(q,p,n_iterations))
 
 #Initialisation
 #On simule tau
 delta_courant = c(rgamma(1,a_1,1),rgamma(k-1,a_2,1))
 
-lambda_output[,,1] = rnorm(p*k,0,1) # ne sert à rien en principe
+lambda_output[,,1] = rnorm(p*k,0,1) # ne sert ? rien en principe
 sigma_2_output[,1] = 1/(rgamma(p,a_sigma,b_sigma)) # tirage selon le prior
 eta_output[,,1] = rnorm(n*k,0,1) # tirage selon le prior
 phi_output[,,1] = matrix(rgamma(p*k,nu/2,nu/2),p,k)
 tau_output[,1] = cumprod(delta_courant)
-beta_output[,,1] = rnorm(k*p,0,1)
+beta_output[,,1] = rnorm(q*p,0,sigma_2_beta)
 
 ## --------------------------------------------------------------------
 for (i in 2:n_iterations){
+  if((i %% 10) == 0){
+    print("iteration")
+    print(i)
+  }
   lambda_output[,,i] = step1(Y-X%*%beta_output[,,i-1],
                              eta_output[,,i-1],
                              sigma_2_output[,i-1],
@@ -169,8 +157,8 @@ for (i in 2:n_iterations){
                         delta_courant)
   
   tau_output[,i] = cumprod(delta_courant)
-  beta_output[,,i] = step6(Y,lambda_output[,,i],
-                           eta_output[,,i])
+  beta_output[,,i] = step6(Y,X, lambda_output[,,i],
+                           eta_output[,,i], sigma_2_output[,i])
 }
 
 
@@ -191,7 +179,7 @@ ggplot(lambda_df) +
              nrow = 10) + 
   geom_line() 
 
-# On affiche les densités
+# On affiche les densit?s
 ggplot(lambda_df) + 
   aes(x = Estimate) + 
   facet_wrap(~Parameter, 
@@ -208,7 +196,7 @@ mean_sigma_2
 
 # Plots
 
-# Premièrement, on formate en data.frame (df)
+# Premi?rement, on formate en data.frame (df)
 sigma_2_df <- format_matrix(matrix_ = sigma_2_output, 
                             param_name = "sigma", 
                             suffix_ = "^2") 
@@ -222,7 +210,7 @@ ggplot(sigma_2_df) +
              nrow = 2) + 
   geom_line() 
 
-# On affiche les densités
+# On affiche les densit?s
 ggplot(sigma_2_df) + 
   aes(x = Estimate) + 
   facet_wrap(~Parameter, 
@@ -249,7 +237,7 @@ ggplot(eta_df) +
              nrow = 10) + 
   geom_line() 
 
-# On affiche les densités
+# On affiche les densit?s
 ggplot(eta_df) + 
   aes(x = Estimate) + 
   facet_wrap(~Parameter, 
@@ -266,7 +254,7 @@ mean_tau
 
 # Plots
 
-# Premièrement, on formate en data.frame (df)
+# Premi?rement, on formate en data.frame (df)
 tau_df <- format_matrix(matrix_ = tau_output, 
                         param_name = "tau", 
                         suffix_ = "^2") 
@@ -280,7 +268,7 @@ ggplot(tau_df) +
              nrow = 2) + 
   geom_line() 
 
-# On affiche les densités
+# On affiche les densit?s
 ggplot(tau_df) + 
   aes(x = Estimate) + 
   facet_wrap(~Parameter, 
@@ -307,14 +295,15 @@ ggplot(beta_df) +
   facet_wrap(~Parameter, 
              labeller = label_parsed,  
              nrow = 2) + 
-  geom_line() 
+  geom_point() +
+  lims(y = c(-1, 1))
 
-# On affiche les densités
+# On affiche les densit?s
 ggplot(beta_df) + 
   aes(x = Estimate) + 
   facet_wrap(~Parameter, 
              labeller = label_parsed, 
-             scales = "free_y", 
+             scales = "free", 
              nrow = 2) + 
   geom_density() 
 
