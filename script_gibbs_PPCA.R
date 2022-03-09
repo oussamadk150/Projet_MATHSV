@@ -157,6 +157,13 @@ for (i in 2:n_iterations){
   tau_output[,i] = cumprod(delta_courant)
 }
 
+##-------SVD--------------
+#On s'assure qu'aprés svd on retrouve les mémes que ceux simuler
+A=svd(eta) # svd(eta)= UDV^T
+D <- diag(A$d) # matrice diagonale de eta*t(eta)
+B=A$u %*% D %*% t(lambda %*% A$v) # B=U*D*t(lambda *V)
+Y_svd=B+t(epsilon) 
+
 
 ## ----plot lambda-----------------------------------------------------
 # On calcule la moyenne a posteriori (estimateur)
