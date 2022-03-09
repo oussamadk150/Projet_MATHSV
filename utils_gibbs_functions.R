@@ -1,15 +1,7 @@
-
-
-## --------------------------------------------------------------------
-rm(list = ls()) #Nettoyage de l'environnement
-
 ## ----librariries-----------------------------------------------------
 library(tidyverse) # Pour la manipulation de donn?es
-library(dplyr)
 library(MASS)      # Pour mvrnorm
-library(ggplot2)   # Pour tracer la distribution des param?tres
-source("utils_formatting_functions.R")
-source("utils_generation_donnees_simulees.R")
+
 
 ## ----step_1----------------------------------------------------------
 # mise ? jour de lambda
@@ -148,12 +140,34 @@ gibbs_sampler <- function(Y, X, k, n_iterations,
     beta_output[,,i] = step6(Y,X, lambda_output[,,i],
                              eta_output[,,i], sigma_2_output[,i],sigma_2_beta)
   }
-  return(list(lambda_output,sigma_2_output,eta_output,phi_output,tau_output,beta_output))
+  # Return a named list
+  return(list(lambda = lambda_output,
+              sigma2 = sigma_2_output,
+              eta = eta_output,
+              phi = phi_output,
+              tau = tau_output,
+              beta = beta_output))
 }
 
-lambda_output = gibbs_sampler(Y, X, 2, n_iterations=1000,
-                     a_1=2, a_2=3, sigma_2_beta=1, 
-                     nu=3, a_sigma=1, b_sigma=0.3)[1]
+# Test (section à supprimer ou déplacer) ----------------------------------
+
+source("utils_generation_donnees_simulees.R") # Generation de x et y
+
+all_outputs = gibbs_sampler(Y, X, k = 2, n_iterations=1000,
+                            a_1=2, a_2 = 3, sigma_2_beta = 1, 
+                            nu = 3, a_sigma=1, b_sigma = 0.3)
+
+
+# Pour extraire un élément, on utilise ma_liste$nom_element
+lambda_output <- all_outputs$lambda
+
+# Calcul de moyenne a posteriori
+
 apply(lambda_output, 
       MARGIN = c(1, 2), 
       mean) 
+
+# Formattage pour ggplot
+
+source("utils_formatting_functions.R") # Chargement de fonctions de formattage
+lambda_df <- format_array(lambda_output, "Lambda")
