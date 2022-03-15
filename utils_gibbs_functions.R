@@ -1,6 +1,5 @@
 ## ----librariries-----------------------------------------------------
 library(tidyverse) # Pour la manipulation de donn?es
-library(MASS)      # Pour mvrnorm
 
 
 ## ----step_1----------------------------------------------------------
@@ -12,7 +11,7 @@ step1 <- function(Y,eta,sigma_2,phi,tau,k){
     Dj = diag(phi[j,]*tau)
     var_post = solve(solve(Dj) + t(eta) %*% eta / sigma_2[j])
     moy_post = var_post %*% t(eta) %*% Y[,j] / sigma_2[j]
-    lambda_post[j,] = mvrnorm(1, moy_post, var_post)
+    lambda_post[j,] = MASS::mvrnorm(1, moy_post, var_post)
   }
   return(lambda_post)
 }
@@ -43,7 +42,7 @@ step3 <- function(Y,lambda,sigma_2,k){
     var_post = solve(diag(1,k) + 
                        t(lambda)%*%solve(sigma)%*%lambda)
     moy_post = var_post %*% t(lambda) %*%solve(sigma)%*%Y[i,]
-    eta_post[i,] = mvrnorm(1,moy_post,var_post)
+    eta_post[i,] = MASS::mvrnorm(1,moy_post,var_post)
   }
   return(eta_post)
 }
@@ -89,7 +88,7 @@ step6 <- function(Y,X,lambda,eta,sigma_2,sigma_2_beta){
   for (j in 1:p) {
     var_post = solve(precision_prior_beta + t(X) %*% X / sigma_2[j])
     moy_post = var_post %*% t(X) %*% (Y[,j] - eta %*% lambda[j,]) / sigma_2[j]
-    beta_post[j,] = mvrnorm(1, moy_post, var_post)
+    beta_post[j,] = MASS::mvrnorm(1, moy_post, var_post)
   }
   return(t(beta_post))
 }
@@ -140,22 +139,113 @@ gibbs_sampler <- function(Y, X, k, n_iterations,
     beta_output[,,i] = step6(Y,X, lambda_output[,,i],
                              eta_output[,,i], sigma_2_output[,i],sigma_2_beta)
   }
+  
+  omega = apply(lambda_output, 
+                MARGIN = c(1, 2), 
+                mean)%*%t(apply(lambda_output, 
+                                MARGIN = c(1, 2), 
+                                mean)) + 
+    diag(rowMeans(sigma_2_output))
+  beta_post_mean <- apply(beta_output, 
+                          c(1, 2),
+                          mean)
+  L = sum(sapply(1:n, function(i){
+    mixtools::logdmvnorm(Y[i, ], 
+                         as.numeric(t(beta_post_mean) %*% X[i, ]),
+                         omega)
+  }))
+  BIC = 2 * (L - .5 * (k*p + p) * log(n))
   # Return a named list
   return(list(lambda = lambda_output,
               sigma2 = sigma_2_output,
               eta = eta_output,
               phi = phi_output,
               tau = tau_output,
-              beta = beta_output))
+              beta = beta_output,
+              BIC = BIC))
 }
 
 # Test (section à supprimer ou déplacer) ----------------------------------
 
 source("utils_generation_donnees_simulees.R") # Generation de x et y
 
-all_outputs = gibbs_sampler(Y, X, k = 2, n_iterations=1000,
-                            a_1=2, a_2 = 3, sigma_2_beta = 1, 
-                            nu = 3, a_sigma=1, b_sigma = 0.3)
+
+library(parallel) # Pour la parallelisation
+
+tested_ks <- 2:9
+all_outputs = mclapply(tested_ks,
+                       function(k_){
+                         gibbs_sampler(Y, X, k = k_, n_iterations=1000,
+                            a_1 = 2, a_2 = 3, sigma_2_beta = 1, 
+                            nu = 3, a_sigma=1, b_sigma = 0.3)},
+                       mc.cores = detectCores()
+                       )
+
+# BIC ---------------------------------------------------------------------
+
+BICs <- tibble(K = tested_ks,
+               BIC = map_dbl(all_outputs, function(x) x$BIC))
+ggplot(BICs) +
+  aes(x = K, y = BIC) + 
+  geom_point()
+
+# Tau a posteriori pour le modele k = 9?
+
+source("utils_formatting_functions.R") # Chargement de fonctions de formattage
+
+
+mon_k <- 2
+
+output <- all_outputs[[which(tested_ks == mon_k)]]
+tau_posterior <- output$tau %>% 
+  format_matrix("tau")
+
+Lambda_posterior <- output$lambda
+Lambda_df <- format_array(Lambda_posterior[,, floor(seq(10, 1000, length.out = 100))],
+             "Lambda")
+vars <- rowMeans(apply(Lambda_posterior, c(2, 3), var))
+
+Beta_posterior <- output$beta
+
+apply(Beta_posterior, c(1, 2), mean) %>% round(2)
+beta
+
+omega_post <- apply(Lambda_posterior, 
+              MARGIN = c(1, 2), 
+              mean)%*%t(apply(Lambda_posterior, 
+                              MARGIN = c(1, 2), 
+                              mean)) + 
+  diag(rowMeans(output$sigma2))
+
+round(omega_post, 2)
+omega_true <- round(lambda%*% t(lambda) + sigma, 2)
+
+corrplot::corrplot(cov2cor(omega_post))
+corrplot::corrplot(cov2cor(omega_true))
+
+
+# Check on beta -----------------------------------------------------------
+
+beta_df <- format_array(Beta_posterior, "beta")
+
+
+ggplot(beta_df) +
+  aes(x = Estimate) +
+  geom_density(aes(color = "Estimation")) +
+  facet_wrap(~Parameter, nrow = nrow(beta),
+             labeller = label_parsed) +
+  geom_vline(data = data.frame(truth = as.numeric(t(beta)),
+                               Parameter = levels(beta_df$Parameter)),
+             aes(xintercept = truth, color = "Truth")) +
+  labs(y = "Estimated density", colour = "")
+
+group_by(tau_posterior, Parameter) %>% 
+  summarise(Estimate = mean(Estimate)) %>% 
+  ggplot(aes(x = Parameter, y = Estimate)) +
+  geom_point()
+
+delta_posterior <- all_outputs[[which(tested_ks == mon_k)]]$delta %>% 
+  format_matrix("delta")
 
 
 # Pour extraire un élément, on utilise ma_liste$nom_element
@@ -169,5 +259,4 @@ apply(lambda_output,
 
 # Formattage pour ggplot
 
-source("utils_formatting_functions.R") # Chargement de fonctions de formattage
 lambda_df <- format_array(lambda_output, "Lambda")
