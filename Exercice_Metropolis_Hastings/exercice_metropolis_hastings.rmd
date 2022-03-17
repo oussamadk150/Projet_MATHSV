@@ -1,0 +1,144 @@
+---
+title: "Exercice_Metropolis_MCMC"
+author: "Romain LACOSTE"
+date: "03/12/2021"
+output: 
+  html_document:
+    theme: journal
+    toc: yes
+    toc_float: yes
+    code_folding: "hide"
+    encoding: "UTF-8"
+    df_print: "paged"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE,
+                      warning = FALSE)
+```
+
+# Installing needed packages
+
+```{r package}
+library("dplyr")
+library("tidyverse")
+```
+
+# Question 1
+
+
+## Mise en contexte
+
+Le but de cette question est d'implémenter l'algorithme de Metropolis-Hastings sur R afin de simuler une variable aléatoire de densité suivante :
+$$f(x) = e^{-|x|^{b}}, b \in \mathbb{R}$$
+On dispose uniquement d'une loi uniforme, c'est-à-dire que l'on ne peut unqiquement simuler une variable aléatoire de loi uniforme :
+$$Unif\{(-c,  c)\}$$
+
+Pour cela, on va voir f comme une loi cible à atteindre par méthode de Monte-Carlo par chaine de markov. A partir d'un noyau de transition Q donné, on va construire une chaine de markov ayant la loi cible comme loi stationnaire. La théorie ergodique permet de demontrer des résultats de convergence asymptotique et justifie ainsi cette démarche.
+
+
+## Implémentation de l'algorithme 
+
+On crée ici une fonction nommé MCMCM dépendant de trois paramètres :
+- c : la taille du pas du noyau de transition Q
+- b : l'exposant dans la fonction cible à atteindre
+- n : le nombre d'itérations que l'algorithme va effectuer
+et qui renvoie la chaîne de markov constuite.
+
+```{r Implementing Metropolis-Hastings algorithm}
+MCMC <- function(b,c,n) {
+  #On définit la loi cible a atteindre 
+  target <- function(x) {
+    return(exp(-abs(x)^b))
+    #return(0.5*dnorm(x,-2)+ 0.5*dnorm(x,2))
+    }
+  liste = rep(NA,n+1)
+  #On choisit x0 la position initiale de la chaine de markov
+  liste[1] = 2
+  for (k in 2:(n+1)) {
+    #On tire y = x + e avec e = Unif(-c,c)
+    y = liste[k-1] + runif(1,-c,c)
+    u = runif(1,0,1)
+    alpha = min(1,target(y)/(target(liste[k-1])))
+    #Acceptation ou rejet de la proposition
+    if (u < alpha){
+      liste[k] = y
+    }
+    else 
+      liste[k] = liste[k-1]
+  }
+  return(liste)
+}
+```
+
+## Visualisation des résultats
+
+```{r Ploting Metropolis-Hastings}
+#Valeur des parametres
+n = 10000
+b = 2
+c = 1
+abscisse = seq(from = -3, to = 3, length.out= n)
+liste = MCMC(b,c,n)
+
+#On trace l'histogramme de frequence de passage
+hist(liste, breaks=100, col = "blue", main = "Frequence de passage de la chaine en chaque etat", xlab = "Valeur de l'etat", ylab = "Frequence de passage", freq = FALSE)
+lines(abscisse,dnorm(abscisse,mean = mean(liste), sd = var(liste)^0.5), type = "l", xlab = "x", ylab = "f(x)", main= "Loi cible f a atteindre", col = "red", lwd = 2) 
+
+#On trace la loi cible a atteindre
+plot(abscisse,exp(-abs(abscisse)^b), type = "l", xlab = "x", ylab = "f(x)", main= "Loi cible f a atteindre", col = "red") 
+
+
+#On trace la trajectoire de la chaîne de Markov
+plot(seq(from = 0, to = n), liste, type = "l", xlab = "Nombre d'iteration", ylab = "Etats de la chaine de markov", main = "Trajectoire de la chaîne de Markov au cours du temps", col = "blue")
+lines(seq(from = 0, to = n-1), 0*seq(from = 0, to = n-1), col = "red")
+lines(seq(from = 0, to = n-1), 2+ 0*seq(from = 0, to = n-1), col = "green")
+lines(seq(from = 0, to = n-1), -2+ 0*seq(from = 0, to = n-1), col = "green")
+legend("topleft", legend=c("E[f(x)]", "Trajectoire"),
+       col=c("red", "blue"),lty = 1:2, cex=0.8)
+
+qqnorm(liste)
+
+```
+
+# Question 2
+
+
+## Mise en contexte
+
+Le but de cette question est d'estimer la variance de la loi cible à l'aide d'un estimateur În et de choisir 1000 points de telle sorte que la variance de l'estimateur v(În) soit le plus petit possible. 
+
+L'algorithme de Metropolis-Hasting crée une chaîne de Markov (Xn) qui a comme loi stationaire la loi cible à atteindre. D'après le théorème Ergodique, pour g une fonction mesurable sur l'ensemble des états de la chaîne de Markov et intégrale, on a :
+$$\frac{1}{n}\sum_{k=0}^n g(X_{k}) \underset{n\to +\infty}{\longrightarrow} \mathbb{E}_{f}(g(X))$$
+Ainsi puisque la loi cible est centrée et en prenant g(x) = x^2 on obtient :
+$$ \frac{1}{n}\sum_{k=0}^n V(X_{k}) \underset{n\to +\infty}{\longrightarrow} V(X)$$
+D'ou l'estimateur de la variance de la loi cible est donné :
+$$ \hat{I}_{n} = \frac{1}{n}\sum_{k=0}^n g(X_{k})$$
+et d'après ce qui précède on a bien :
+$$\hat{I}_{n} \underset{n\to +\infty}{\longrightarrow} V(X)$$
+
+## Estimatation de la variance de la loi cible 
+
+```{r Estimateur de la variance}
+#Estimateur de la variance de la loi cible
+n = 40
+I = sum(MCMC(2,5,n)^2)/n
+print(I)
+
+#On calcule la variance de l'estimateur I
+var_estimateur <- function(b,c,n,M){
+   rerun(M,sum(MCMC(b,c,n)^2)/n)%>%unlist%>%(var)
+} 
+
+print(var_estimateur(2,15,n,25))
+
+c_liste = seq(1,10,0.5)
+Ik_liste = map_dbl(c_liste, var_estimateur, b=2, n=2000, M=100)
+
+plot(c_liste, Ik_liste, col="blue", type = "l", xlab = "Valeurs du pas c", ylab = "Variance de l'estimateur", main= "Variance de I_n en fonction du paramètre c")
+
+
+```
+
+
+
